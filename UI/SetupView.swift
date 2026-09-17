@@ -41,12 +41,7 @@ struct SetupView: View {
                     }.disabled(model.authenticating || email.isEmpty || password.isEmpty || server.isEmpty)
                     if model.authenticating { Button("Cancel sign-in", role: .cancel) { model.cancelSignIn() } }
                     if let request = model.verificationRequest {
-                        Text(request.error ?? "Enter the verification code from your trusted Apple device.").font(.caption)
-                        TextField("Verification code", text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode)
-                        Button("Verify") { model.verify(.verificationCode(code)); code = "" }.disabled(code.count < 6)
-                        if case .sms(let phones, _, _) = request {
-                            ForEach(phones) { phone in Button("Send SMS to \(phone.number)") { model.verify(.requestSMS(phoneID: phone.id)) } }
-                        }
+                        verificationFields(request)
                     }
                 } header: { Text("2 · Apple Account") } footer: {
                     Text("Use an anisette server you trust. Anisette supplies device authentication data; your password goes to Apple and is never saved by FreshApple. Your session and signing key stay in this device’s Keychain.")
@@ -89,6 +84,43 @@ struct SetupView: View {
             } message: { Text(model.error ?? "") }
             .onDisappear { password = ""; model.cancelSignIn() }
         }
+    }
+    @ViewBuilder
+    private func verificationFields(_ request: TwoFactorRequest) -> some View {
+        if let error = request.error { Text(error).font(.caption).foregroundStyle(.orange) }
+        switch request {
+        case .selectDeliveryMethod(_, let phones):
+            Text("Choose how to receive your verification code.").font(.subheadline)
+            Button("Use a trusted Apple device") { model.verify(.requestTrustedDevice) }
+            phoneDeliveryButtons(phones)
+        case .trustedDevice:
+            verificationCodeField("Enter the code shown on your trusted Apple device.")
+            Button("Resend to trusted device") { model.verify(.requestTrustedDevice) }
+        case .sms(let phones, _, _):
+            verificationCodeField("Enter the code sent by text message.")
+            phoneDeliveryButtons(phones)
+        case .voice(let phones, _, _):
+            verificationCodeField("Enter the code from the verification call.")
+            phoneDeliveryButtons(phones)
+        }
+    }
+
+    @ViewBuilder
+    private func phoneDeliveryButtons(_ phones: [TrustedPhoneNumber]) -> some View {
+        ForEach(phones) { phone in
+            Button("Text \(phone.number)") { code = ""; model.verify(.requestSMS(phoneID: phone.id)) }
+            Button("Call \(phone.number)") { code = ""; model.verify(.requestVoice(phoneID: phone.id)) }
+        }
+    }
+
+    @ViewBuilder
+    private func verificationCodeField(_ instructions: String) -> some View {
+        Text(instructions).font(.caption)
+        TextField("Verification code", text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode)
+        Button("Verify") {
+            model.verify(.verificationCode(code.trimmingCharacters(in: .whitespacesAndNewlines)))
+            code = ""
+        }.disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).count != 6)
     }
 }
 

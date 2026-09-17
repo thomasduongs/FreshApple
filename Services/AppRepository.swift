@@ -60,7 +60,8 @@ actor AppRepository {
         let app = ManagedApp(bundleIdentifier: bundle.bundleIdentifier, displayName: bundle.name,
                              version: bundle.version, sourceFile: file, sha256: hash,
                              lastRefresh: old?.lastRefresh, expirationDate: old?.expirationDate,
-                             pendingExpiration: old?.pendingExpiration, sourceURL: expected?.ipa ?? old?.sourceURL)
+                             pendingExpiration: old?.pendingExpiration, sourceURL: expected?.ipa ?? old?.sourceURL,
+                             pendingProfileID: old?.pendingProfileID)
         do { try update(app) }
         catch { try? FileManager.default.removeItem(at: destination); throw error }
         if let old { try? FileManager.default.removeItem(at: directory.appendingPathComponent(old.sourceFile)) }

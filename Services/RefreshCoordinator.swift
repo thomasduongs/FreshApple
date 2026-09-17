@@ -37,16 +37,18 @@ actor RefreshCoordinator {
     }
     func reconcileSelfInstall() async throws {
         guard !running else { return }
+        running = true
+        defer { running = false }
         var apps = try await repository.apps()
-        guard let index = apps.firstIndex(where: { $0.isSelf && $0.pendingExpiration != nil }),
-              let pending = apps[index].pendingExpiration else { return }
+        guard let index = apps.firstIndex(where: { $0.isSelf && $0.pendingExpiration != nil }) else { return }
         let profileURL = Bundle.main.bundleURL.appendingPathComponent("embedded.mobileprovision")
-        if let actual = try? ProvisioningProfile(fileURL: profileURL), abs(actual.expirationDate.timeIntervalSince(pending)) < 2 {
-            apps[index].expirationDate = actual.expirationDate
-            apps[index].lastRefresh = .now
+        if let actual = try? ProvisioningProfile(fileURL: profileURL),
+           actual.bundleIdentifier == apps[index].id,
+           apps[index].confirmPendingRefresh(installedProfileID: actual.uuid) {
             record("FreshApple’s self-refresh was verified on launch.")
         } else { record("Self-refresh could not be verified. Refresh again to retry.") }
         apps[index].pendingExpiration = nil
+        apps[index].pendingProfileID = nil
         try await repository.save(apps)
         await ExpirationNotifications.schedule(apps)
     }
@@ -82,6 +84,8 @@ actor RefreshCoordinator {
                 await progress(.init(fraction: base + 0.75 / Double(apps.count), message: "Installing \(app.displayName)…"))
                 try await device.stage(appURL: appURL, bundleID: app.id)
                 if app.isSelf {
+                    let profile = try ProvisioningProfile(fileURL: appURL.appendingPathComponent("embedded.mobileprovision"))
+                    app.pendingProfileID = profile.uuid
                     app.pendingExpiration = expiry
                     try await repository.update(app)
                     record("Other apps are saved. FreshApple self-install is pending verification on next launch.")
@@ -97,6 +101,7 @@ actor RefreshCoordinator {
                     record("Refreshed \(app.displayName).")
                 }
             }
+            await BackgroundRefresh.didRefresh()
             record("Refresh installation requests completed.")
             await progress(.init(fraction: 1, message: apps.contains(where: \.isSelf) ? "Apps refreshed · reopen to verify FreshApple" : "All apps refreshed"))
         } catch {

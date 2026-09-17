@@ -11,6 +11,17 @@ struct ManagedApp: Codable, Identifiable, Sendable, Equatable {
     var expirationDate: Date?
     var pendingExpiration: Date?
     var sourceURL: URL?
+    var pendingProfileID: UUID?
+
+    mutating func confirmPendingRefresh(installedProfileID: UUID, at date: Date = .now) -> Bool {
+        guard let expected = pendingProfileID, installedProfileID == expected,
+              let expiration = pendingExpiration else { return false }
+        expirationDate = expiration
+        lastRefresh = date
+        pendingExpiration = nil
+        pendingProfileID = nil
+        return true
+    }
 
     var isSelf: Bool { bundleIdentifier == Bundle.main.bundleIdentifier }
     func daysRemaining(at date: Date = .now) -> Int? {

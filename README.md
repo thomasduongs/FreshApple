@@ -9,11 +9,11 @@ Open `../FreshApple.xcodeproj`, select FreshApple, and run on your iPhone with y
 1. Bootstrap FreshApple using Xcode or your existing sideloading tool. Enable Developer Mode and trust your Mac.
 2. Export a lockdown pairing record for **this iPhone** with your existing pairing tool. Import the `.mobiledevicepairing` or `.plist` file in Setup. Pairing secrets are stored in the device-local Keychain.
 3. Install and connect LocalDevVPN. Use **Test LocalDevVPN connection** to validate the actual lockdown connection.
-4. Enter your Apple Account and an HTTPS anisette server you operate or trust. Complete two-factor authentication and select your developer team. FreshApple saves the session, not your password.
+4. Enter your Apple Account and an HTTPS anisette server you operate or trust. Choose trusted-device, SMS, or voice verification, complete two-factor authentication, and select your developer team. FreshApple saves the session, not your password.
 5. Import your source IPAs using **+**, including FreshApple’s own exported IPA if you want self-refresh. Use the same team and bundle IDs as the installed apps.
 6. Tap **Refresh Apps**. Signing material is reused, profiles are renewed, and installation_proxy installs updates without uninstalling apps.
 
-Self-refresh runs last. FreshApple persists a pending result before its executable is replaced and verifies the embedded profile the next time it launches. Importing an IPA alone never claims it is installed or gives it a fabricated expiration date.
+Self-refresh runs last. FreshApple persists a pending result before its executable is replaced and verifies the embedded profile’s exact UUID the next time it launches. Matching expiration dates alone do not count as success. Importing an IPA alone never claims it is installed or gives it a fabricated expiration date.
 
 Long-press the status ring, or tap **View diagnostics**, for pairing, connection, team, certificate, profile, and activity information. Apple authentication, profile generation, and physical-device install still require end-to-end verification with your account and device. No account credentials are included in the project.
 
@@ -36,7 +36,7 @@ Generate the checksum with `shasum -a 256 myapp.ipa`. Publish the IPA first, the
 
 ## Automation
 
-The **Refresh Apps** App Intent is exposed to Shortcuts and opens FreshApple. Put your LocalDevVPN action before it. Background processing is requested after three days and remains subject to iOS scheduling. Enable reminders in Setup to schedule a notification 48 hours before each confirmed expiration. Neither a background task nor a Shortcut guarantees uninterrupted self-installation.
+The **Refresh Apps** App Intent is exposed to Shortcuts and opens FreshApple. Put your LocalDevVPN action before it. Background processing is requested after three days and remains subject to iOS scheduling. Reopening the app preserves the planned date instead of postponing it; failed background attempts retry after six hours. Enable reminders in Setup to schedule a notification 48 hours before each confirmed expiration. Neither a background task nor a Shortcut guarantees uninterrupted self-installation.
 
 ## Data and behavior
 

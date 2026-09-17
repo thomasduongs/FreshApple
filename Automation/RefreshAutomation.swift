@@ -39,22 +39,59 @@ enum ExpirationNotifications {
     }
 }
 
+struct BackgroundRefreshPlan: Codable, Sendable {
+    var nextAttempt: Date
+
+    init(now: Date = .now) { nextAttempt = now.addingTimeInterval(3 * 86400) }
+
+    mutating func completed(success: Bool, at date: Date = .now) {
+        nextAttempt = date.addingTimeInterval(success ? 3 * 86400 : 6 * 3600)
+    }
+}
+
+private actor BackgroundRefreshScheduler {
+    private let key = "backgroundRefreshPlan"
+
+    func schedule(result: Bool? = nil) {
+        var plan = UserDefaults.standard.data(forKey: key)
+            .flatMap { try? JSONDecoder().decode(BackgroundRefreshPlan.self, from: $0) }
+            ?? BackgroundRefreshPlan()
+        if let result { plan.completed(success: result) }
+        let request = BGProcessingTaskRequest(identifier: BackgroundRefresh.identifier)
+        request.requiresNetworkConnectivity = true
+        // Reopening the app must not move an existing request further into the future.
+        request.earliestBeginDate = plan.nextAttempt
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            UserDefaults.standard.set(try JSONEncoder().encode(plan), forKey: key)
+        } catch {
+            // iOS may disable background processing; foreground refresh remains available.
+        }
+    }
+}
+
 enum BackgroundRefresh {
     static let identifier = "thomasduong.FreshApple.refresh"
+    private static let scheduler = BackgroundRefreshScheduler()
+
     static func register() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
             let work = Task {
-                defer { schedule() }
-                do { try await RefreshCoordinator.shared.refresh(); task.setTaskCompleted(success: true) }
-                catch { task.setTaskCompleted(success: false) }
+                do {
+                    try await RefreshCoordinator.shared.refresh()
+                    task.setTaskCompleted(success: true)
+                } catch {
+                    await scheduler.schedule(result: false)
+                    task.setTaskCompleted(success: false)
+                }
             }
             task.expirationHandler = { work.cancel() }
         }
     }
     static func schedule() {
-        let request = BGProcessingTaskRequest(identifier: identifier)
-        request.requiresNetworkConnectivity = true
-        request.earliestBeginDate = Date().addingTimeInterval(3 * 86400)
-        try? BGTaskScheduler.shared.submit(request)
+        Task { await scheduler.schedule() }
+    }
+    static func didRefresh() async {
+        await scheduler.schedule(result: true)
     }
 }

@@ -84,11 +84,12 @@ final class RefreshViewModel: ObservableObject {
                 }
                 if teams.count == 1, let team = teams.first { try await ProvisioningManager.shared.select(team) }
                 await load()
+            } catch is CancellationError {
+                // Dismissing Setup or cancelling sign-in is not an authentication failure.
             } catch { self.error = error.localizedDescription }
         }
     }
     func requestVerification(_ request: TwoFactorRequest) async throws -> TwoFactorResponse {
-        if case .selectDeliveryMethod = request { return .requestTrustedDevice }
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
