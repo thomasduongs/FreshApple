@@ -41,7 +41,21 @@ actor AppRepository {
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: work) }
         let staged = work.appendingPathComponent("source.ipa")
-        try FileManager.default.copyItem(at: url, to: staged)
+        // Coordinate with Files so cloud providers can materialize the selected file.
+        // Validate the local copy instead of relying on optional provider metadata.
+        var coordinationError: NSError?
+        var copyError: Error?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { readableURL in
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: readableURL.path)
+                if attributes[.type] as? FileAttributeType == .typeDirectory {
+                    throw RefreshError.message("The selected item is a folder. Export or ZIP the Payload folder to create an IPA; renaming a folder is not enough.")
+                }
+                try FileManager.default.copyItem(at: readableURL, to: staged)
+            } catch { copyError = error }
+        }
+        if let coordinationError { throw coordinationError }
+        if let copyError { throw copyError }
         let hash = try Self.checksum(staged)
         if let expected, hash != expected.sha256.lowercased() {
             throw RefreshError.message("The download failed its SHA-256 integrity check.")

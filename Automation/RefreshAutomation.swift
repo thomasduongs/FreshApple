@@ -39,33 +39,31 @@ enum ExpirationNotifications {
     }
 }
 
-struct BackgroundRefreshPlan: Codable, Sendable {
-    var nextAttempt: Date
-
-    init(now: Date = .now) { nextAttempt = now.addingTimeInterval(3 * 86400) }
-
-    mutating func completed(success: Bool, at date: Date = .now) {
-        nextAttempt = date.addingTimeInterval(success ? 3 * 86400 : 6 * 3600)
-    }
-}
-
 private actor BackgroundRefreshScheduler {
     private let key = "backgroundRefreshPlan"
 
-    func schedule(result: Bool? = nil) {
+    func schedule(result: Bool? = nil) async {
+        let apps = result == nil ? try? await AppRepository.shared.apps() : nil
         var plan = UserDefaults.standard.data(forKey: key)
             .flatMap { try? JSONDecoder().decode(BackgroundRefreshPlan.self, from: $0) }
             ?? BackgroundRefreshPlan()
         if let result { plan.completed(success: result) }
+        if let apps {
+            plan.consider(expirations: apps.compactMap(\.expirationDate))
+        }
+        // Save retry state even when iOS rejects the request.
+        guard let data = try? JSONEncoder().encode(plan) else { return }
+        UserDefaults.standard.set(data, forKey: key)
         let request = BGProcessingTaskRequest(identifier: BackgroundRefresh.identifier)
         request.requiresNetworkConnectivity = true
         // Reopening the app must not move an existing request further into the future.
         request.earliestBeginDate = plan.nextAttempt
         do {
             try BGTaskScheduler.shared.submit(request)
-            UserDefaults.standard.set(try JSONEncoder().encode(plan), forKey: key)
+            await RefreshCoordinator.shared.recordAutomation("Background refresh requested for \(plan.nextAttempt.formatted()). iOS chooses the actual run time.")
         } catch {
-            // iOS may disable background processing; foreground refresh remains available.
+            let code = (error as NSError).code
+            await RefreshCoordinator.shared.recordAutomation("Background refresh could not be scheduled (code \(code)). Check Background App Refresh in iOS Settings; use the Refresh Apps Shortcut for a scheduled attempt.")
         }
     }
 }
@@ -77,6 +75,9 @@ enum BackgroundRefresh {
     static func register() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
             let work = Task {
+                await RefreshCoordinator.shared.recordAutomation("iOS started background refresh.")
+                // Self-installation may terminate us before the handler returns.
+                await scheduler.schedule(result: false)
                 do {
                     try await RefreshCoordinator.shared.refresh()
                     task.setTaskCompleted(success: true)
@@ -90,6 +91,14 @@ enum BackgroundRefresh {
     }
     static func schedule() {
         Task { await scheduler.schedule() }
+    }
+    static func prepareRetry() async {
+        await scheduler.schedule(result: false)
+    }
+    static func catchUpIsDue(at date: Date = .now) -> Bool {
+        guard let data = UserDefaults.standard.data(forKey: "backgroundRefreshPlan"),
+              let plan = try? JSONDecoder().decode(BackgroundRefreshPlan.self, from: data) else { return false }
+        return plan.nextAttempt <= date
     }
     static func didRefresh() async {
         await scheduler.schedule(result: true)

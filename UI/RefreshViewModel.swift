@@ -17,6 +17,7 @@ final class RefreshViewModel: ObservableObject {
     @Published var authenticating = false
     @Published var verificationRequest: TwoFactorRequest?
     private var verificationContinuation: CheckedContinuation<TwoFactorResponse, Error>?
+    private var handlingActivation = false
     private var operation: Task<Void, Never>?
     private var signInTask: Task<Void, Never>?
 
@@ -35,6 +36,20 @@ final class RefreshViewModel: ObservableObject {
             paired = PairingStore().isConfigured
             events = await RefreshCoordinator.shared.history()
         } catch { self.error = error.localizedDescription }
+    }
+    func becameActive() async {
+        guard !handlingActivation else { return }
+        handlingActivation = true
+        defer { handlingActivation = false }
+        await load()
+        if !apps.isEmpty, paired, selectedTeam != nil, !busy, BackgroundRefresh.catchUpIsDue() {
+            // Persist a retry first so repeated scene activations cannot start a loop.
+            await BackgroundRefresh.prepareRetry()
+            await RefreshCoordinator.shared.recordAutomation("Catching up a due automatic refresh while FreshApple is open.")
+            refresh()
+        } else {
+            BackgroundRefresh.schedule()
+        }
     }
     private func setProgress(_ state: RefreshProgress) { progress = state }
     func refresh() {

@@ -30,9 +30,11 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showSetup) { SetupView(model: model) }
             .sheet(isPresented: $showDiagnostics) { DiagnosticsView(model: model) }
-            .fileImporter(isPresented: $importIPA, allowedContentTypes: [UTType(filenameExtension: "ipa") ?? .data]) { model.importIPA($0) }
-            .task { await model.load() }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await model.load() } } }
+            // IPA types do not always conform to public.data in Files providers.
+            // The importer validates its contents before adding it to the library.
+            .fileImporter(isPresented: $importIPA, allowedContentTypes: [.item]) { model.importIPA($0) }
+            .task { await model.becameActive() }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await model.becameActive() } } }
             .alert("FreshApple", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
                 Button("OK", role: .cancel) { model.error = nil }
             } message: { Text(model.error ?? "") }

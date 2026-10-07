@@ -36,7 +36,7 @@ Generate the checksum with `shasum -a 256 myapp.ipa`. Publish the IPA first, the
 
 ## Automation
 
-The **Refresh Apps** App Intent is exposed to Shortcuts and opens FreshApple. Put your LocalDevVPN action before it. Background processing is requested after three days and remains subject to iOS scheduling. Reopening the app preserves the planned date instead of postponing it; failed background attempts retry after six hours. Enable reminders in Setup to schedule a notification 48 hours before each confirmed expiration. Neither a background task nor a Shortcut guarantees uninterrupted self-installation.
+The **Refresh Apps** App Intent is exposed to Shortcuts and opens FreshApple. Put your LocalDevVPN action before it. Background processing is requested after three days, or sooner to leave 48 hours before a confirmed expiration, and remains subject to iOS scheduling. Requests, scheduling failures, and background launches appear in Diagnostics. Reopening the app preserves the planned date and attempts an overdue refresh automatically when pairing and a team are configured; LocalDevVPN must already be connected. Failed attempts retry after six hours. A retry is persisted and requested before background work and self-installation, so replacing FreshApple cannot interrupt scheduling its successor. Enable reminders in Setup to schedule a notification 48 hours before each confirmed expiration. Neither a background task nor a Shortcut guarantees uninterrupted self-installation.
 
 ## Data and behavior
 

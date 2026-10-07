@@ -29,6 +29,8 @@ actor RefreshCoordinator {
         try? FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? JSONEncoder().encode(events).write(to: logURL, options: .atomic)
     }
+    func recordAutomation(_ message: String) { record(message) }
+
     func importIPA(_ url: URL) async throws {
         guard !running else { throw RefreshError.alreadyRunning }
         running = true
@@ -46,6 +48,7 @@ actor RefreshCoordinator {
            actual.bundleIdentifier == apps[index].id,
            apps[index].confirmPendingRefresh(installedProfileID: actual.uuid) {
             record("FreshApple’s self-refresh was verified on launch.")
+            await BackgroundRefresh.didRefresh()
         } else { record("Self-refresh could not be verified. Refresh again to retry.") }
         apps[index].pendingExpiration = nil
         apps[index].pendingProfileID = nil
@@ -88,6 +91,7 @@ actor RefreshCoordinator {
                     app.pendingProfileID = profile.uuid
                     app.pendingExpiration = expiry
                     try await repository.update(app)
+                    await BackgroundRefresh.prepareRetry()
                     record("Other apps are saved. FreshApple self-install is pending verification on next launch.")
                     // The complete signed bundle is on the device's AFC staging area now.
                     try FileManager.default.removeItem(at: work)
@@ -106,7 +110,17 @@ actor RefreshCoordinator {
             await progress(.init(fraction: 1, message: apps.contains(where: \.isSelf) ? "Apps refreshed · reopen to verify FreshApple" : "All apps refreshed"))
         } catch {
             // Do not persist arbitrary upstream errors, which can contain account data.
-            record(error is CancellationError ? "Refresh cancelled." : "Refresh stopped. Open the app for details.")
+            let reason: String
+            switch error {
+            case is CancellationError: reason = "Refresh cancelled or background time expired."
+            case RefreshError.vpnUnavailable: reason = "Refresh stopped: LocalDevVPN connection was unavailable."
+            case RefreshError.pairingRequired: reason = "Refresh stopped: pairing record is required."
+            case RefreshError.authenticationRequired: reason = "Refresh stopped: Apple Account sign-in is required."
+            case RefreshError.teamRequired: reason = "Refresh stopped: developer team is required."
+            case RefreshError.noApps: reason = "Refresh stopped: no source IPAs have been imported."
+            default: reason = "Refresh stopped. Open the app and try Refresh Apps for details."
+            }
+            record(reason)
             throw error
         }
     }

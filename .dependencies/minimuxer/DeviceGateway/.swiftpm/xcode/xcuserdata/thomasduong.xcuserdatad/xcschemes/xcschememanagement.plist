@@ -7,7 +7,7 @@
 		<key>DeviceGatewayAPI.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>3</integer>
+			<integer>4</integer>
 		</dict>
 		<key>IdeviceGateway-Dynamic.xcscheme_^#shared#^_</key>
 		<dict>
@@ -17,7 +17,7 @@
 		<key>IdeviceGateway.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>4</integer>
+			<integer>0</integer>
 		</dict>
 		<key>LibimobiledeviceGateway-Dynamic.xcscheme_^#shared#^_</key>
 		<dict>
