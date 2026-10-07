@@ -124,16 +124,32 @@ actor ProvisioningManager {
                 }
                 appID = try await portal.assignAppGroups(groups, to: appID, team: team, session: auth.session)
             }
-            let name = "FreshApple \(component.bundleIdentifier)"
-            let profile: ProvisioningProfile
-            if let existing = existingProfiles.first(where: { $0.name == name && $0.bundleIdentifier == component.bundleIdentifier }),
-               let profileID = existing.identifier {
-                profile = try await portal.updateProvisioningProfile(profileID: profileID, name: name, appIDId: appID.identifier,
-                                certificateIDs: [certID], deviceIDs: [deviceID], team: team, session: auth.session)
+            let nameKey = "profileName.\(team.id).\(component.bundleIdentifier)"
+            let name: String
+            if let saved = try credentials.read(nameKey), let value = String(data: saved, encoding: .utf8), !value.isEmpty {
+                name = value
             } else {
-                profile = try await portal.createProvisioningProfile(name: name, appID: appID, certificateIDs: [certID],
-                                deviceIDs: [deviceID], team: team, session: auth.session)
+                name = ProfileRenewal.newName()
+                try credentials.write(Data(name.utf8), for: nameKey)
             }
+            let candidates = existingProfiles.filter {
+                $0.name == name && ($0.bundleIdentifier == nil || $0.bundleIdentifier == component.bundleIdentifier)
+            }
+            let profile = try await ProfileRenewal.renew(name: name, profileIDs: candidates.compactMap(\.identifier),
+                saveName: { try self.credentials.write(Data($0.utf8), for: nameKey) },
+                update: { profileID, profileName in
+                    // List responses can omit appId; verify the actual profile before changing it.
+                    let previous = try await self.portal.downloadProvisioningProfile(profileID: profileID, team: team, session: auth.session)
+                    guard previous.bundleIdentifier == component.bundleIdentifier, previous.teamIdentifier == team.id else {
+                        throw RefreshError.message("The saved provisioning profile belongs to a different app or team.")
+                    }
+                    return try await self.portal.updateProvisioningProfile(profileID: profileID, name: profileName, appIDId: appID.identifier,
+                        certificateIDs: [certID], deviceIDs: [deviceID], team: team, session: auth.session)
+                },
+                create: { profileName in
+                    try await self.portal.createProvisioningProfile(name: profileName, appID: appID, certificateIDs: [certID],
+                        deviceIDs: [deviceID], team: team, session: auth.session)
+                })
             guard profile.expirationDate > Date(), profile.teamIdentifier == team.id,
                   profile.bundleIdentifier == component.bundleIdentifier, profile.deviceIDs.contains(udid) else {
                 throw RefreshError.message("Apple returned a profile that does not match this app, team, or iPhone.")

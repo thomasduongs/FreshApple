@@ -45,6 +45,7 @@ The **Refresh Apps** App Intent is exposed to Shortcuts and opens FreshApple. Pu
 - Keychain: session, team, signing certificate/private key, anisette provisioning state, pairing record; `AfterFirstUnlockThisDeviceOnly`, no iCloud sync.
 - Temporary signing directories are removed after each app. During self-refresh, the bundle is uploaded to AFC staging before local cleanup.
 - Refresh operations are serialized across the button, Shortcut, and background task. Completed app results survive a later app’s failure.
+- Profile names are unique and saved per app and team in Keychain. Renewal uses the profile’s portal ID; duplicate-name error 35 retries once with a new name and leaves existing profiles untouched.
 - No uninstall, certificate revocation, or bundle-ID rewriting is performed. Missing profile capabilities or a different signing team stop installation. Archives containing traversal paths, symlinks, multiple main apps, or more than 4 GB expanded data are rejected.
 - Source IPAs are not automatically discovered from installed apps. Free-team app and capability limits are enforced by Apple’s services.
 
